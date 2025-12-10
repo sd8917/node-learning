@@ -1,94 +1,123 @@
-## File streams and backpressure
+## Architecture nodejs
 
-### What is backpressure?
-- When a readable stream pushes data faster than a writable stream can consume, the writable signals backpressure by returning `false` from `write()`.
-- Proper handling pauses the readable until the writable emits `drain`, preventing memory bloat and dropped data.
+2️⃣ How do you design a rate limiter WITHOUT Redis?
 
-### Minimal example (copy with backpressure)
-```javascript
-import fs from 'fs';
+Redis is ideal, but interviewers love to ask:
 
-const readable = fs.createReadStream('10mb.pdf', {
-  highWaterMark: 64 * 1024 // 64KB chunks
+What if Redis isn't available? How would you implement a rate limiter in-memory?
+
+API rate limiting is an essential technique to prevent abuse and ensure the smooth operation of a server by restricting the number of requests a client can make in a given timeframe. It is commonly used to protect public APIs, prevent brute-force attacks, and reduce server load
+
+
+⭐ Option 1: Token bucket algorithm (in-memory)
+
+Each user gets a "bucket" that refills over time.
+
+```
+const buckets = new Map();
+
+export function rateLimiter(req, res, next) {
+  const ip = req.ip;
+
+  const now = Date.now();
+  const window = 60 * 1000;
+  const limit = 10;
+
+  if (!buckets.has(ip)) {
+    buckets.set(ip, { count: 1, start: now });
+    return next();
+  }
+
+  const bucket = buckets.get(ip);
+  // reset to new time after limit is hit
+  if (now - bucket.start > window) {
+    bucket.count = 1;
+    bucket.start = now;
+    return next();
+  }
+
+  if (bucket.count >= limit) {
+    return res.status(429).json({ message: "Too many requests" });
+  }
+
+  bucket.count++;
+  next();
+}
+
+
+
+
+```
+
+
+⭐ Option 2: Sliding Window Counter
+
+
+## 4️⃣ What is a Dead Letter Queue (DLQ)?
+
+A DLQ = Failed messages go here after repeated retry attempts.
+
+It prevents:
+- Message loss
+- Message loops
+- Stuck queues
+- Poison messages (bad data)
+
+⭐ DLQ Architecture
+
+```
+Main Queue → Worker → (fails 3 times) → Dead Letter Queue
+
+```
+
+🔥 Example using BullMQ
+Worker:
+
+```
+import { Worker, Queue } from "bullmq";
+
+const fileQueue = new Queue("file-processing");
+
+// Dead Letter Queue
+const dlq = new Queue("file-dlq");
+
+const worker = new Worker("file-processing", async (job) => {
+  try {
+    // process logic
+  } catch (err) {
+    throw err; // BullMQ tracks failure
+  }
+}, {
+  attempts: 3,     // retries
+  backoff: 5000,   // wait 5 sec before retrying
 });
 
-const writable = fs.createWriteStream('copy.txt');
-
-readable.on('data', (chunk) => {
-  const canWrite = writable.write(chunk);
-  if (!canWrite) {
-    console.log('Backpressure detected. Pausing readable...');
-    readable.pause();
+worker.on("failed", async (job, err) => {
+  if (job.attemptsMade >= 3) {
+    // move to DLQ
+    await dlq.add("dead-job", job.data);
+    console.log("Moved job to DLQ");
   }
 });
 
-writable.on('drain', () => {
-  console.log('Writable drained. Resuming readable...');
-  readable.resume();
-});
-
-readable.on('end', () => {
-  writable.end();
-  console.log('Copy complete.');
-});
-
-writable.on('finish', () => console.log('Writable closed.'));
-writable.on('error', (err) => console.error('Writable error:', err));
-readable.on('error', (err) => console.error('Readable error:', err));
-```
-
-### Other useful `fs` stream options
-- `encoding`: Set text encoding; omit for binary.
-- `highWaterMark`: Chunk size; adjust to tune throughput vs. memory.
-- `flags`: E.g., `'a'` to append, `'w'` to overwrite.
-- `mode`: File permissions on create (e.g., `0o644`).
-
-### Common `fs` operations (quick reference)
-- `fs.promises.readFile(path, encoding)`: Read entire file as string/buffer.
-- `fs.promises.writeFile(path, data, options)`: Overwrite or create a file.
-- `fs.promises.appendFile(path, data)`: Append to a file.
-- `fs.promises.stat(path)`: Inspect file metadata.
-- `fs.createReadStream(path, options)`: Stream reads with backpressure support.
-- `fs.createWriteStream(path, options)`: Stream writes with backpressure support.
-
-### Tips
-- Always handle `error` on both readable and writable streams.
-- Call `writable.end()` when the readable finishes to flush and close the writable.
-- Prefer `fs/promises` for simple one-shot reads/writes; use streams for large files.
-
-
-=== 
-
-## ⭐ 1. What is highWaterMark and how does it relate to backpressure?
-
-- `highWaterMark` defines how much data a stream can hold in memory before stopping the flow.
 
 ```
 
-Readable default: 64KB
-Writable default: 16KB
+## 3️⃣ Explain graceful shutdown for Express apps
 
-```
+When deploying (PM2, Docker, Kubernetes), you must:
 
-ex 
+❌ Stop accepting new requests
+❌ Wait for ongoing requests to finish
+❌ Close DB connections
+❌ Close message queues
+❌ THEN exit
 
-```
+📌 Why graceful shutdown is required
 
-const fs = require("fs");
+If you kill -9:
 
-const stream = fs.createReadStream("bigfile.txt", {
-  highWaterMark: 1024 * 1024 // 1MB buffer per chunk
-});
-
-
-```
-
-
-Interview Insight
-
-Bigger highWaterMark = fewer I/O calls, more RAM usage.
-Smaller = more pressure, more chunking.
-
-Trick question:
-“What happens if your readable has a higher highWaterMark than writable?”
-Answer: Backpressure increases, write() returns false more often.
+- In-flight requests fail
+- DB writes get corrupted
+- Jobs get stuck
+- Redis/Mongo connections leak

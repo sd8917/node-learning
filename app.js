@@ -1,21 +1,24 @@
-import fs from 'fs';
+import express from 'express';
+import { rateLimiter } from './middleware.js';
 
-const readable = fs.createReadStream("10mb.pdf", {
-  highWaterMark: 1024 * 64 // 64KB chunks
-});
 
-const writable = fs.createWriteStream("copy.txt");
+const app = express();
 
-readable.on("data", (chunk) => {
-  const canWrite = writable.write(chunk);
 
-  if (!canWrite) {
-    console.log("Backpressure detected! Pausing...");
-    readable.pause();
-  }
-});
+app.use(rateLimiter);
 
-writable.on("drain", () => {
-  console.log("Writable drained. Resuming...");
-  readable.resume();
-});
+app.get("/profile", (req,res)=>{
+    return res.json({
+        success: true,
+        message: "Profile fetched successful"
+    })
+})
+
+const PORT = 8080;
+
+app.listen(PORT,(Eerr)=>{
+    if(Eerr){
+        console.log('Something went wrong in runnign app');
+    }
+    console.log('App is running on PORT ', PORT)
+})
