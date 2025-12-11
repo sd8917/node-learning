@@ -1,94 +1,103 @@
-## File streams and backpressure
+Node.js uses Libuv which manages an event loop containing 6 phases.
 
-### What is backpressure?
-- When a readable stream pushes data faster than a writable stream can consume, the writable signals backpressure by returning `false` from `write()`.
-- Proper handling pauses the readable until the writable emits `drain`, preventing memory bloat and dropped data.
+Here are the phases + what happens in each, explained using a real-world analogy.
 
-### Minimal example (copy with backpressure)
-```javascript
-import fs from 'fs';
-
-const readable = fs.createReadStream('10mb.pdf', {
-  highWaterMark: 64 * 1024 // 64KB chunks
-});
-
-const writable = fs.createWriteStream('copy.txt');
-
-readable.on('data', (chunk) => {
-  const canWrite = writable.write(chunk);
-  if (!canWrite) {
-    console.log('Backpressure detected. Pausing readable...');
-    readable.pause();
-  }
-});
-
-writable.on('drain', () => {
-  console.log('Writable drained. Resuming readable...');
-  readable.resume();
-});
-
-readable.on('end', () => {
-  writable.end();
-  console.log('Copy complete.');
-});
-
-writable.on('finish', () => console.log('Writable closed.'));
-writable.on('error', (err) => console.error('Writable error:', err));
-readable.on('error', (err) => console.error('Readable error:', err));
-```
-
-### Other useful `fs` stream options
-- `encoding`: Set text encoding; omit for binary.
-- `highWaterMark`: Chunk size; adjust to tune throughput vs. memory.
-- `flags`: E.g., `'a'` to append, `'w'` to overwrite.
-- `mode`: File permissions on create (e.g., `0o644`).
-
-### Common `fs` operations (quick reference)
-- `fs.promises.readFile(path, encoding)`: Read entire file as string/buffer.
-- `fs.promises.writeFile(path, data, options)`: Overwrite or create a file.
-- `fs.promises.appendFile(path, data)`: Append to a file.
-- `fs.promises.stat(path)`: Inspect file metadata.
-- `fs.createReadStream(path, options)`: Stream reads with backpressure support.
-- `fs.createWriteStream(path, options)`: Stream writes with backpressure support.
-
-### Tips
-- Always handle `error` on both readable and writable streams.
-- Call `writable.end()` when the readable finishes to flush and close the writable.
-- Prefer `fs/promises` for simple one-shot reads/writes; use streams for large files.
-
-
-=== 
-
-## ⭐ 1. What is highWaterMark and how does it relate to backpressure?
-
-- `highWaterMark` defines how much data a stream can hold in memory before stopping the flow.
+Event Loop Phases
 
 ```
+┌───────────────────────────┐
+│        timers             │  setTimeout, setInterval
+└───────┬───────────────────┘
+        ↓
+┌───────────────────────────┐
+│     pending callbacks     │  I/O errors, TCP errors
+└───────┬───────────────────┘
+        ↓
+┌───────────────────────────┐
+│     idle / prepare        │  (internal only)
+└───────┬───────────────────┘
+        ↓
+┌───────────────────────────┐
+│         poll              │  I/O events, fs, network
+│   → may block here        │
+└───────┬───────────────────┘
+        ↓
+┌───────────────────────────┐
+│         check             │  setImmediate()
+└───────┬───────────────────┘
+        ↓
+┌───────────────────────────┐
+│     close callbacks       │  socket.on('close')
+└───────────────────────────┘
 
-Readable default: 64KB
-Writable default: 16KB
+Microtasks run *between every phase*:
+ - process.nextTick()
+ - Promises
 
-```
 
-ex 
-
-```
-
-const fs = require("fs");
-
-const stream = fs.createReadStream("bigfile.txt", {
-  highWaterMark: 1024 * 1024 // 1MB buffer per chunk
-});
 
 
 ```
 
+## Phase 1: Timers
 
-Interview Insight
+Handles:
 
-Bigger highWaterMark = fewer I/O calls, more RAM usage.
-Smaller = more pressure, more chunking.
+1 setTimeout
+2 setInterval
 
-Trick question:
-“What happens if your readable has a higher highWaterMark than writable?”
-Answer: Backpressure increases, write() returns false more often.
+➡️ Example:
+You schedule a reminder to run later.
+
+## Phase 2: Pending Callbacks
+
+Handles:
+
+I/O-related callbacks that couldn’t run earlier
+(e.g., TCP errors, failed requests)
+
+➡️ Example: A network request failed; Node handles the error callback.
+
+## Phase 3: Idle/Prepare
+
+Internal to Node.
+You don’t write code for this.
+
+## Phase 4: Poll Phase (MOST IMPORTANT)
+
+This is where I/O happens:
+reading files
+database queries
+HTTP network responses
+
+➡️ Example:
+You read users.json or fetch data from MongoDB.
+The poll phase waits for I/O to finish.
+
+## Phase 5: Check Phase
+
+Handles:
+
+setImmediate()
+
+➡️ Example:
+Execution after I/O, but before timers run again.
+
+## Phase 6: Close Callbacks
+
+Handles:
+
+```
+socket.on('close')
+stream.destroy()
+
+```
+
+➡️ Example:
+A client disconnects; cleanup happens here.
+
+
+
+2️⃣ Microtasks vs Macrotasks
+
+Node separates tasks into two categories:
