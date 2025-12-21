@@ -1,21 +1,22 @@
-import fs from 'fs';
+import express from 'express';
+import multer from 'multer';
 
-const readable = fs.createReadStream("10mb.pdf", {
-  highWaterMark: 1024 * 64 // 64KB chunks
-});
+const app = express();
 
-const writable = fs.createWriteStream("copy.txt");
+const upload = multer({dest: "upload"});
 
-readable.on("data", (chunk) => {
-  const canWrite = writable.write(chunk);
+// to fetch the file... 
+app.use("/uploads", express.static("upload")); 
 
-  if (!canWrite) {
-    console.log("Backpressure detected! Pausing...");
-    readable.pause();
-  }
-});
 
-writable.on("drain", () => {
-  console.log("Writable drained. Resuming...");
-  readable.resume();
-});
+app.post("/upload", upload.single("file"), (req,res)=>{
+  console.log("req.file ", req.file);
+  console.log("file type", req.file.mimetype);
+
+  res.send('File uploaded');
+})
+
+app.listen(8080, ()=>{
+  console.log('App is running on port ', 8080)
+})
+
