@@ -40,7 +40,6 @@ app.post('/upload', upload.single('file'), (req, res) => {
     return res.status(400).json({ error: 'No file uploaded' });
   }
 
-  console.log('File uploaded successfully:', req.file.filename);
   res.status(200).json({
     message: 'File uploaded successfully',
     filename: req.file.filename,
