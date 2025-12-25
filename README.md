@@ -1,140 +1,71 @@
-## Security princpal
+===
+## Upload file using streaming
 
-### 1️⃣ How do you handle secrets in Node.js?
+- I optimize node.js uploads by streaming files, enforcing strict limits, offloading large uploads to s3 via presigned URLs, and using chunked upploads for reliability.
 
-- JWT secret keys
-- DB credentials
-- API keys
-- OAuth client secrets
-- Encryption keys
+## Production checklist
+1. Streaming uploads
+2. File size limits
+3. MIME validation
+4. Direct-to-cloud for scale
+5. Chunked uploads for large files
+6. Image optimization
+7. Rate limiting
+8. Virus scanning
 
-Use `.env` or `aws parameter storage`
+## Nginx & infra tuning 
 
-- Rotate secrets regularly
- 
- ## 3️⃣ How do you sanitize file uploads to avoid path traversal attacks?
+`
+client_max_body_size 20M;
+client_body_buffer_size 128k
+`
 
-```
+## Securit optimization
 
-❌
-
-app.post("/upload", upload.single("file"), (req, res) => {
-  fs.renameSync(req.file.path, "uploads/" + req.body.filename);
-});
-
-
-```
-
-A. Never trust filenames
-
-Use a random safe name:
-
-B. Enforce allowed MIME types
-
-Validate MIME in code, not just frontend.
-
-
-```
-const allowed = ["image/png", "image/jpeg", "application/pdf"];
-
-if (!allowed.includes(req.file.mimetype)) {
-  throw new Error("Invalid file type");
+`
+limits :{
+    fileSize: 10*1024*1024
+    files: 1
 }
+`
+
+- Validate
+    -   MIME tpye(don't trust extension)
+    - File signature (magic bytes)
+    - Virus scan (ClamAV for enterprise)
 
 
-```
+## Compress and image optimization
 
-D. File size limit
+## Backpressure handling 
 
-E. Upload to external storage
+- Node streams automatically apply backpressure , but only if you pipe correctly.
 
-Avoid storing directly on server:
+## Chunk uploads for large files
 
-AWS S3
+1. When to use
+    - Videos
+    - Files > 50MB
+    - Unstable networks
 
-Cloudinary
+2. Strategy
+    - Split file into chunk (client)
+    - Upload chunks in parallel
+    - Merge on server/cloud
 
-GCP Storage
+## Direct-to cloud uploads
+- Skip nodejs entirely for file transfer
 
-## 4️⃣ How do you secure an Express API from common vulnerabilities?
+1. Flow 
+   - Backend generates pre-signed URL
+   - Client uploads directly to s3/GCS
+   - Backend only stores metadata
 
-A. Use Helmet
+2. Benefit
+   - Zero backend load
+   - Better global performance
+   - Lower server cost
 
-Protects from 11+ known attacks (XSS, sniffing, clickjacking):
+- “For high-traffic apps, I offload uploads directly to S3 using presigned URLs.”
 
-```
-const helmet = require("helmet");
-app.use(helmet());
-
-```
-
-B. Rate Limit your API
-
-Prevents brute force, floods, bot attack
-
-```
-const rateLimit = require("express-rate-limit");
-
-app.use("/api", rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-}));
-
-
-
-```
-
-C. CSRF Protection
-
-For session-based apps:
-
-D. Disable X-Powered-By
-
-Hides Express identity.
-
-```
-app.disable("x-powered-by");
-
-```
-
-E. Validate ALL inputs
-
-Use Joi, Zod, or Yup
-
-```
-const schema = Joi.object({
-  email: Joi.string().email().required(),
-  password: Joi.string().min(8).required(),
-});
-
-```
-
-G. Use HTTPS everywhere
-
-Redirect HTTP → HTTPS
-
-H. Protect Cookies
-
-JWT/Session cookies:
-
-I. Disable CORS for unknown domains
-
-```
-
-const corsOptions = {
-  origin: ["https://yourapp.com"],
-  credentials: true,
-}
-app.use(cors(corsOptions));
-
-```
-
-L. Limit JSON payload size
-
-Protects from JSON bombing:
-
-```
-
-app.use(express.json({ limit: "1mb" }));
-```
 
