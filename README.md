@@ -68,4 +68,57 @@ limits :{
 
 - “For high-traffic apps, I offload uploads directly to S3 using presigned URLs.”
 
+## Complete and simple flow
+
+```
+
+┌─────────────┐
+│   Browser   │
+│  (Client)   │
+└──────┬──────┘
+       │ multipart/form-data
+       │
+       ▼
+┌───────────────────┐
+│ Express Server    │
+│ POST /upload      │
+└──────┬────────────┘
+       │
+       ▼
+┌───────────────────┐
+│ Multer Middleware │
+│ upload.single()   │
+└──────┬────────────┘
+       │
+       ├─► fileFilter (mimetype check)
+       │
+       ├─► limits (10MB check)
+       │
+       ▼
+┌───────────────────┐
+│ Disk Storage      │
+│ fs Write Stream   │
+└──────┬────────────┘
+       │
+       ▼
+┌───────────────────┐
+│ uploads/          │
+│ image-123.png     │
+└──────┬────────────┘
+       │
+       ▼
+┌───────────────────┐
+│ Controller Logic  │
+│ req.file exists   │
+└──────┬────────────┘
+       │
+       ▼
+┌───────────────────┐
+│ JSON Response     │
+│ Upload Success    │
+└───────────────────┘
+
+
+
+```
 
