@@ -145,3 +145,83 @@ if (cluster.isPrimary) {
         └─────────────────┘
 
 ```
+
+# 20 HIGH-IMPACT INTERVIEW QUESTIONS
+
+## How to avoid payment twice
+`Same request → same result → executed only once`
+
+- Idempotency key add while make api calls and check if
+
+- From frontend send in header
+
+`
+axios.post(
+  "/api/pay",
+  { amount: 500 },
+  {
+    headers: {
+      "Idempotency-Key": idempotencyKey
+    }
+  }
+);
+
+`
+
+- In backedn idepotency key must be unqiue
+
+`
+{
+  idempotencyKey: String, // UNIQUE
+  status: "processing" | "success" | "failed",
+  amount: Number,
+  response: Object,
+  createdAt: Date
+}
+
+
+`
+
+”
+
+🔥 20 HIGH-IMPACT INTERVIEW QUESTIONS
+
+How does Node handle concurrency?
+
+What blocks event loop?
+
+Cluster vs worker threads?
+
+How to handle CPU-heavy tasks?
+
+Express middleware flow?
+
+Error handling in async routes?
+
+Prevent memory leaks?
+
+Scale Node horizontally?
+
+Handle backpressure?
+
+Graceful shutdown?
+
+Why Fastify over Express?
+
+What is event loop lag?
+
+What happens if DB is slow?
+
+How retries cause outages?
+
+Circuit breaker pattern?
+
+How Node handles GC?
+
+How to secure Express?
+
+JWT vs sessions?
+
+API versioning?
+
+Production debugging steps?
