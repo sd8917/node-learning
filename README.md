@@ -1,140 +1,147 @@
-## Security princpal
+## Worker & event 
 
-### 1️⃣ How do you handle secrets in Node.js?
+- Its important concept to understand when we have cpu intensive task we offload those task to worker
+- Since, js is single-threaded event loop so its will block code executing in line... 
+- It main thread the sequential exectuction goes and parallel in worker thread we do intesive task.
 
-- JWT secret keys
-- DB credentials
-- API keys
-- OAuth client secrets
-- Encryption keys
+- CPU-heavy tasks block the event loop:
 
-Use `.env` or `aws parameter storage`
+      - image processing
+      - encryption
+      - large loops
+      - data transformation
 
-- Rotate secrets regularly
- 
- ## 3️⃣ How do you sanitize file uploads to avoid path traversal attacks?
+      Bonus: Worker Pool (Senior-Level Tip)
 
-```
+For production:
 
-❌
+- Create N workers = CPU cores
+- Distribute tasks
+- Avoid single worker bottleneck
 
-app.post("/upload", upload.single("file"), (req, res) => {
-  fs.renameSync(req.file.path, "uploads/" + req.body.filename);
-});
-
-
-```
-
-A. Never trust filenames
-
-Use a random safe name:
-
-B. Enforce allowed MIME types
-
-Validate MIME in code, not just frontend.
+## 2️⃣ Worker Threads vs Child Processes (Interview MUST)
 
 
-```
-const allowed = ["image/png", "image/jpeg", "application/pdf"];
 
-if (!allowed.includes(req.file.mimetype)) {
-  throw new Error("Invalid file type");
+## Worker vs cluster module
+- Cluster increases throughput, workers reduce latency under CPU load
+- Cluster scales the server, workers scale computation.
+- I use cluster to scale I/O across cores and worker threads to offload CPU-intensive tasks, sometimes combining both for high-scale systems
+
+ 1. fault Tolerance
+      Cluster
+      ✔ If one process crashes, others survive
+      ✔ Easy respawn
+      Worker Threads
+      ❌ Worker crash can affect process
+      ⚠️ Must handle errors carefully
+
+      `
+      import cluster from "cluster";
+import os from "os";
+
+if (cluster.isPrimary) {
+  for (let i = 0; i < os.cpus().length; i++) {
+    cluster.fork();
+  }
+} else {
+  startServer();
 }
 
 
-```
+      `
 
-D. File size limit
+## Loadtesting and how to debug real production issues
 
-E. Upload to external storage
+- We test our apis and system on unexpected i/o and heavy load 
+- System should be fault taularent and 
+- understand peak traffic to identify bottlenecks before users do.”
 
-Avoid storing directly on server:
+## Flow diagram
 
-AWS S3
-
-Cloudinary
-
-GCP Storage
-
-## 4️⃣ How do you secure an Express API from common vulnerabilities?
-
-A. Use Helmet
-
-Protects from 11+ known attacks (XSS, sniffing, clickjacking):
-
-```
-const helmet = require("helmet");
-app.use(helmet());
+- Worker thread
 
 ```
 
-B. Rate Limit your API
-
-Prevents brute force, floods, bot attack
-
-```
-const rateLimit = require("express-rate-limit");
-
-app.use("/api", rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-}));
-
-
-
-```
-
-C. CSRF Protection
-
-For session-based apps:
-
-D. Disable X-Powered-By
-
-Hides Express identity.
-
-```
-app.disable("x-powered-by");
-
+        ┌───────────────┐
+        │   Client      │
+        └───────┬───────┘
+                │ HTTP
+                ▼
+        ┌─────────────────┐
+        │ Node.js Process │
+        │ (Main Thread)   │
+        │ Event Loop      │
+        └───────┬─────────┘
+                │ postMessage()
+                ▼
+        ┌─────────────────┐
+        │ Worker Thread   │
+        │ (Same Process) │
+        │ Separate V8    │
+        └───────┬─────────┘
+                │ message back (parentPort.on("message", (data) => {}))
+                | send using parentPort.postMessage({})
+                ▼
+        ┌─────────────────┐
+        │ Main Thread     │
+        └─────────────────┘
 ```
 
-E. Validate ALL inputs
 
-Use Joi, Zod, or Yup
+- Same process
+- Separate JS thread
+- Can share memory (SharedArrayBuffer)
+- Best for CPU-bound logic
 
-```
-const schema = Joi.object({
-  email: Joi.string().email().required(),
-  password: Joi.string().min(8).required(),
-});
+
+## Cluster
 
 ```
 
-G. Use HTTPS everywhere
-
-Redirect HTTP → HTTPS
-
-H. Protect Cookies
-
-JWT/Session cookies:
-
-I. Disable CORS for unknown domains
-
-```
-
-const corsOptions = {
-  origin: ["https://yourapp.com"],
-  credentials: true,
-}
-app.use(cors(corsOptions));
-
-```
-
-L. Limit JSON payload size
-
-Protects from JSON bombing:
+                 ┌────────────┐
+                 │   Client   │
+                 └─────┬──────┘
+                       │ HTTP
+                       ▼
+               ┌────────────────┐
+               │   Master       │
+               │   Process      │
+               │ (Load Balancer)│
+               └─────┬──────────┘
+         ┌───────────┼───────────┐
+         ▼           ▼           ▼
+┌────────────┐ ┌────────────┐ ┌────────────┐
+│ Worker #1  │ │ Worker #2  │ │ Worker #3  │
+│ Event Loop │ │ Event Loop │ │ Event Loop │
+└────────────┘ └────────────┘ └────────────┘
 
 ```
 
-app.use(express.json({ limit: "1mb" }));
-```
+- Multiple processes
+- Each has own event loop & memory
+- OS-level isolation
+- Best for I/O-heavy apps
 
+## Child process
+- Run external programs or isolate risky tasks
+
+```
+        ┌───────────────┐
+        │ Node.js App   │
+        │ (Parent)     │
+        └───────┬───────┘
+                │ spawn / fork
+                ▼
+        ┌─────────────────┐
+        │ Child Process   │
+        │ (OS Process)   │
+        │ Own Memory     │
+        └───────┬─────────┘
+                │ IPC / stdio
+                ▼
+        ┌─────────────────┐
+        │ Parent Process  │
+        └─────────────────┘
+
+```

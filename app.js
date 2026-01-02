@@ -1,21 +1,54 @@
-import fs from 'fs';
+import express from 'express';
+import {Worker } from 'worker_threads'
 
-const readable = fs.createReadStream("10mb.pdf", {
-  highWaterMark: 1024 * 64 // 64KB chunks
-});
+const worker = new Worker("./worker.js")
 
-const writable = fs.createWriteStream("copy.txt");
+const app = express();
 
-readable.on("data", (chunk) => {
-  const canWrite = writable.write(chunk);
 
-  if (!canWrite) {
-    console.log("Backpressure detected! Pausing...");
-    readable.pause();
-  }
-});
+app.get("/",(req, res)=>{
+  res.json({
+    success: true,
+    data: [
+      {"user": "sudhanshu",
+        "email":"sudhanshuraj89@gmail.com",
+        "contact" : 9123145982,
+      },
 
-writable.on("drain", () => {
-  console.log("Writable drained. Resuming...");
-  readable.resume();
-});
+      {"user": "Shristi",
+        "email":"rishis@gmail.com",
+        "contact" : 91231453442,
+      },
+      {"user": "Raju vaj",
+        "email":"raj123@gmail.com",
+        "contact" : 34563145982,
+      },
+    ],
+  })
+})
+
+app.get("/heavy", (req,res)=>{
+  const start = Date.now();
+
+  console.log('Start heavy task..');
+  worker.postMessage(15_000); // 15 seconds
+  
+  worker.once("message", (result) => {
+    res.json({
+      success: true,
+      data: [],
+      message: result.message,
+    });
+  });
+
+  worker.once("error", (err) => {
+    res.status(500).json({ success: false, error: err.message });
+  });
+
+})
+
+
+const PORT = 8080;
+app.listen(PORT, ()=>{
+  console.log('App is running on port', PORT);
+})
